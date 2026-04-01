@@ -60,6 +60,7 @@ Open:
 http://localhost:8000/visualization/index.html
 
 📦 Project Structure
+
 docs/           → architecture + roadmap  
 examples/       → runnable demos  
 protocol/       → canonical encoding + hashing  
@@ -73,6 +74,7 @@ verifier/       → validation logic
 tests/          → replay + fixtures  
 
 🧭 Roadmap
+
  Live randomness beacon integration
  Real astronomy data sources
  Strong cryptographic signatures
@@ -99,6 +101,7 @@ Do NOT use for:
 financial systems
 critical infrastructure
 security-sensitive environments
+
 📜 License
 
 MIT License
