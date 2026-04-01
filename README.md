@@ -1,4 +1,15 @@
 # Astra-Fourward
+
+## 🎥 Demo
+
+Run this:
+
+python examples/run_witness_demo.py
+python examples/run_canon_demo.py
+
+Then open:
+http://localhost:8000/visualization/index.html
+
 > “Instead of trusting a chain, anchor it to reality.”
 
 ASTRA FourWard is an experimental ledger protocol combining witness-based anchoring, prime discovery, and canonical consensus to create a forward-only, reality-linked system designed for stronger immutability than traditional blockchains.
