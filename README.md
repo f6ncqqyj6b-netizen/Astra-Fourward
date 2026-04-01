@@ -48,12 +48,14 @@ The goal is to make rewriting history not just difficult—but structurally unna
 🧪 Quick Start
 
 Run core demos:
+
 python examples/run_witness_demo.py
 python examples/run_canon_demo.py
 python examples/run_crypto_demo.py
 python examples/run_test_harness.py
 
 Launch viewer:
+
 python examples/serve_viewer.py
 
 Open:
