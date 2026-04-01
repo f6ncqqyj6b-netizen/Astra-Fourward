@@ -1,0 +1,627 @@
+# ASTRA FourWard
+
+ASTRA FourWard is a research protocol exploring a reality-anchored ledger that binds:
+
+- deterministic state transitions
+- independent witness inputs
+- prime-discovery events
+- Merkle star maps
+- canonical chain selection
+
+This master repository merges the strongest pieces of the package series into one GitHub-ready starting point.
+
+## Included layers
+
+- Canon layer
+- Real witness layer architecture
+- Crypto hardening scaffold
+- Formal tests and fixtures
+- Visualization demos
+- Contributor and release docs
+
+## Suggested first runs
+
+### Witness demo
+```bash
+python examples/run_witness_demo.py
+```
+
+### Canon demo
+```bash
+python examples/run_canon_demo.py
+```
+
+### Crypto demo
+```bash
+python examples/run_crypto_demo.py
+```
+
+### Test harness
+```bash
+python examples/run_test_harness.py
+```
+
+### Viewer
+```bash
+python examples/serve_viewer.py
+```
+
+Then open:
+
+```text
+http://localhost:8000/visualization/index.html
+```
+
+## Status
+
+This is a research-grade prototype, not a production ledger.
+
+# Release Checklist
+
+- [ ] README reviewed
+- [ ] docs refreshed
+- [ ] examples executed
+- [ ] tests run
+- [ ] package history updated
+- [ ] repo cleaned for publication
+
+# ASTRA FourWard Docs
+
+## Core
+- Architecture
+- Roadmap
+- Package History
+- Contributing
+- Release Checklist
+
+## Package Merge
+This master repo combines the most important work from:
+- Package 6 — Canon Layer
+- Package 7 — Real Witness Layer
+- Package 8 — Crypto Hardening
+- Package 9 — Formal Tests
+- Package 10 — Release Candidate
+
+# Architecture Overview
+
+ASTRA FourWard is a forward-only ledger design with these major components:
+
+1. Deterministic state engine
+2. Witness aggregation layer
+3. Prime discovery engine
+4. Merkle Star Map
+5. Canon selection layer
+6. Verification and testing harness
+
+The protocol concept uses multi-domain witness inputs to make history harder to falsify quietly.
+
+# Roadmap
+
+## Current merged repository
+- Canon layer
+- Witness layer
+- Crypto scaffold
+- Tests
+- Docs
+- Viewer
+
+## Next engineering goals
+- live witness integrations
+- stronger signature and key model
+- real transport and networking
+- durable database backend
+- audited verifier implementation
+
+# Package History
+
+- Package 1–3: early architecture and executable scaffolds
+- Package 4: networked attestations
+- Package 5: transport and persistence
+- Package 6: canon layer
+- Package 7: real witness layer architecture
+- Package 8: crypto hardening scaffold
+- Package 9: formal tests and replay harness
+- Package 10: release candidate structure
+
+# Contributing
+
+## Principles
+- preserve deterministic behavior
+- keep canonical serialization stable
+- avoid silent protocol-rule changes
+- add tests for meaningful logic changes
+- document package-level architectural shifts
+
+## Summary
+## Expected behavior
+## Actual behavior
+## Reproduction steps
+## Relevant module
+
+import json
+from pathlib import Path
+from protocol.canonical import domain_hash
+from node.node_runtime import FourWardNode
+from storage.json_store import JsonStore
+from verifier.witness_verifier import verify_witness_bundle
+
+outdir = Path("examples/output"); outdir.mkdir(parents=True, exist_ok=True); store = JsonStore(str(outdir / "store"))
+genesis_state = {"ledger_name": "ASTRA FourWard", "epoch": 0, "notes": "Master repo witness demo"}
+genesis_root = domain_hash("FW:STATE:V1", genesis_state)
+genesis_anchor = domain_hash("FW:ANCHOR:V1", {"genesis_root": genesis_root, "label": "GENESIS"})
+
+node = FourWardNode("node-a", "alpha-secret", genesis_anchor)
+epochs = []
+for epoch in range(1, 8):
+    inputs = {"epoch": epoch, "payload": domain_hash("FW:DEMO-IN:V1", {"epoch": epoch, "prev": node.prev_anchor})[:24]}
+    record = node.step(epoch, inputs)
+    record["witness_bundle_ok"] = verify_witness_bundle(record["witness_bundle"])
+    epochs.append(record)
+
+data = {"genesis_root": genesis_root, "genesis_anchor": genesis_anchor, "epochs": epochs}
+with open(outdir / "witness_demo_data.json", "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+store.save("witness_snapshot.json", data)
+print("Created examples/output/witness_demo_data.json")
+
+import json
+from pathlib import Path
+from protocol.canonical import domain_hash
+from node.node_runtime import FourWardNode
+from verifier.epoch_verifier import verify_epoch
+from consensus.proposal import make_proposal
+from consensus.vote import make_vote, verify_vote
+from consensus.canon import choose_canonical, finality_status
+from consensus.equivocation import detect_equivocation
+from storage.json_store import JsonStore
+
+outdir = Path("examples/output"); outdir.mkdir(parents=True, exist_ok=True); store = JsonStore(str(outdir / "store"))
+genesis_state = {"ledger_name": "ASTRA FourWard", "epoch": 0, "notes": "Master repo canon demo"}
+genesis_root = domain_hash("FW:STATE:V1", genesis_state)
+genesis_anchor = domain_hash("FW:ANCHOR:V1", {"genesis_root": genesis_root, "label": "GENESIS"})
+
+node_secrets = {"node-a":"alpha-secret","node-b":"beta-secret","node-c":"gamma-secret"}
+validator_secrets = {"val-1":"v1-secret","val-2":"v2-secret","val-3":"v3-secret"}
+nodes = [FourWardNode("node-a", node_secrets["node-a"], genesis_anchor), FourWardNode("node-b", node_secrets["node-b"], genesis_anchor), FourWardNode("node-c", node_secrets["node-c"], genesis_anchor)]
+
+canon_epochs = []
+canon_chain = []
+for epoch in range(1, 6):
+    proposals = []
+    proposal_votes = {}
+    records = []
+    for node in nodes:
+        inputs = {"epoch": epoch, "payload": domain_hash("FW:DEMO-IN:V1", {"epoch": epoch, "node": node.node_id, "prev": node.prev_anchor})[:24]}
+        record = node.step(epoch, inputs)
+        record["verification_ok"] = verify_epoch(record, node_secrets)
+        records.append(record)
+        proposal = make_proposal(record)
+        proposals.append(proposal)
+        proposal_votes[proposal["proposal_id"]] = []
+
+    winning_hint = sorted(proposals, key=lambda p: p["forward_anchor"])[-1]["proposal_id"]
+    for validator_id, secret in validator_secrets.items():
+        for proposal in proposals:
+            decision = "accept" if proposal["proposal_id"] == winning_hint else "reject"
+            vote = make_vote(validator_id, secret, proposal["proposal_id"], epoch, decision)
+            vote["valid_signature"] = verify_vote(vote, secret)
+            proposal_votes[proposal["proposal_id"]].append(vote)
+
+    all_votes = [v for votes in proposal_votes.values() for v in votes]
+    faults = detect_equivocation(all_votes)
+    canonical = choose_canonical(proposals, proposal_votes, quorum_threshold=2)
+    if canonical is not None:
+        canon_chain.append(canonical)
+    canon_epochs.append({"epoch": epoch, "records": records, "proposals": proposals, "proposal_votes": proposal_votes, "canonical": canonical, "finality": finality_status(canonical["proposal_id"], proposal_votes, 2) if canonical else {"accept_count":0,"quorum_ok":False}, "faults": faults})
+
+data = {"genesis_root": genesis_root, "genesis_anchor": genesis_anchor, "canon_epochs": canon_epochs, "canon_chain": canon_chain}
+with open(outdir / "canon_demo_data.json", "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+store.save("canon_snapshot.json", data)
+print("Created examples/output/canon_demo_data.json")
+
+import json
+from pathlib import Path
+from crypto.keys import generate_identity
+from crypto.signing import sign_message, verify_message
+from verifier.crypto_verifier import verify_signed_payload
+
+outdir = Path("examples/output")
+outdir.mkdir(parents=True, exist_ok=True)
+
+secrets = {"node-a": "alpha-secret", "node-b": "beta-secret", "node-c": "gamma-secret"}
+identities = {node_id: generate_identity(node_id, secret) for node_id, secret in secrets.items()}
+payload = {"epoch": 1, "message": "FourWard master repo signed payload"}
+
+signed = []
+for node_id, secret in secrets.items():
+    sig = sign_message(node_id, secret, payload)
+    signed.append({"node_id": node_id, "payload": payload, "signature": sig, "local_verify_ok": verify_message(node_id, secret, payload, sig), "service_verify_ok": verify_signed_payload(node_id, secrets, payload, sig)})
+
+with open(outdir / "crypto_demo.json", "w", encoding="utf-8") as f:
+    json.dump({"identities": identities, "signed_messages": signed}, f, indent=2)
+
+print("Created examples/output/crypto_demo.json")
+
+import json
+from pathlib import Path
+from tests.replay import load_fixtures, verify_anchor_continuity
+from tests.schema_checks import schema_ok
+from tests.cross_node import same_epoch_numbers
+
+outdir = Path("examples/output")
+outdir.mkdir(parents=True, exist_ok=True)
+
+fixtures = load_fixtures("fixtures/golden_epochs.json")
+results = {
+    "fixture_count": len(fixtures),
+    "schema_ok": all(schema_ok(r) for r in fixtures),
+    "anchor_continuity_ok": verify_anchor_continuity(fixtures),
+    "cross_node_epoch_alignment_ok": same_epoch_numbers([fixtures, fixtures]),
+}
+
+with open(outdir / "test_harness_results.json", "w", encoding="utf-8") as f:
+    json.dump(results, f, indent=2)
+
+print("Created examples/output/test_harness_results.json")
+
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from pathlib import Path
+import os
+root = Path(__file__).resolve().parents[1]
+os.chdir(root)
+server = ThreadingHTTPServer(("0.0.0.0", 8000), SimpleHTTPRequestHandler)
+print(f"Serving {root} at http://localhost:8000")
+server.serve_forever()
+
+import hashlib, json
+from typing import Any
+
+def encode_canonical(obj: Any) -> bytes:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+def domain_hash(domain: str, obj: Any) -> str:
+    return hashlib.sha256(domain.encode("utf-8") + b"|" + encode_canonical(obj)).hexdigest()
+
+
+from typing import Dict, Any
+from protocol.canonical import domain_hash
+
+def compute_state(prev_anchor: str, inputs: Dict[str, Any], epoch: int, node_id: str) -> Dict[str, Any]:
+    return {
+        "epoch": epoch,
+        "node_id": node_id,
+        "prev_anchor_prefix": prev_anchor[:16],
+        "input_commitment": domain_hash("FW:INPUTS:V1", inputs),
+    }
+
+def compute_state_root(state: Dict[str, Any]) -> str:
+    return domain_hash("FW:STATE:V1", state)
+
+from protocol.canonical import domain_hash
+
+def derive_seed(prev_anchor: str, beacon_value: str, celestial_digest: str) -> str:
+    return domain_hash("FW:SEED:V1", {
+        "prev_anchor": prev_anchor,
+        "beacon_value": beacon_value,
+        "celestial_digest": celestial_digest,
+    })
+
+def compute_forward_anchor(prev_anchor: str, state_root: str, witness_hash: str, merkle_root: str) -> str:
+    return domain_hash("FW:ANCHOR:V1", {
+        "prev_anchor": prev_anchor,
+        "state_root": state_root,
+        "witness_hash": witness_hash,
+        "merkle_root": merkle_root,
+    })
+
+
+from typing import Tuple
+from protocol.canonical import domain_hash
+
+def is_prime(n: int) -> bool:
+    if n < 2:
+        return False
+    for p in [2,3,5,7,11,13,17,19,23,29]:
+        if n == p:
+            return True
+        if n % p == 0:
+            return False
+    d = n - 1
+    s = 0
+    while d % 2 == 0:
+        s += 1
+        d //= 2
+    for a in [2,325,9375,28178,450775,9780504,1795265022]:
+        if a % n == 0:
+            continue
+        x = pow(a, d, n)
+        if x == 1 or x == n - 1:
+            continue
+        ok = False
+        for _ in range(s - 1):
+            x = pow(x, 2, n)
+            if x == n - 1:
+                ok = True
+                break
+        if not ok:
+            return False
+    return True
+
+def normalize_seed(seed_hex: str, min_bits: int = 48) -> int:
+    candidate = int(seed_hex, 16) & ((1 << 61) - 1)
+    candidate |= (1 << (min_bits - 1))
+    candidate |= 1
+    return candidate
+
+def find_prime(seed_hex: str, min_bits: int = 48) -> Tuple[int, int, str]:
+    candidate = normalize_seed(seed_hex, min_bits)
+    steps = 0
+    while not is_prime(candidate):
+        candidate += 2
+        steps += 1
+    proof = domain_hash("FW:PRIME-PROOF:V1", {"prime": str(candidate), "steps": steps})
+    return candidate, steps, proof
+
+from prime_engine.prime_search import is_prime
+
+def verify_prime(prime_value: int, proof: str) -> bool:
+    return is_prime(prime_value) and isinstance(proof, str) and len(proof) >= 16
+
+
+from protocol.canonical import domain_hash
+
+def make_witness_hash(state_root: str, beacon_value: str, celestial_digest: str, prime_value: int) -> str:
+    return domain_hash("FW:WITNESS:V1", {
+        "state_root": state_root,
+        "beacon_value": beacon_value,
+        "celestial_digest": celestial_digest,
+        "prime_value": str(prime_value),
+    })
+
+def make_star_leaf(epoch: int, prime_value: int, seed_hex: str, witness_hash: str) -> str:
+    return domain_hash("FW:STAR-LEAF:V1", {
+        "epoch": epoch,
+        "prime_value": str(prime_value),
+        "seed_hex": seed_hex,
+        "witness_hash": witness_hash,
+    })
+
+import hashlib
+from typing import List
+
+def merkle_root_hex(leaves: List[str]) -> str:
+    if not leaves:
+        return hashlib.sha256(b"FW:EMPTY").hexdigest()
+    level = [bytes.fromhex(x) for x in leaves]
+    while len(level) > 1:
+        if len(level) % 2 == 1:
+            level.append(level[-1])
+        nxt = []
+        for i in range(0, len(level), 2):
+            nxt.append(hashlib.sha256(level[i] + level[i+1]).digest())
+        level = nxt
+    return level[0].hex()
+
+
+class WitnessSource:
+    source_id = "base"
+    witness_type = "base"
+    freshness_window = 1
+
+    def fetch(self, epoch: int, prev_anchor: str) -> dict:
+        raise NotImplementedError
+
+from protocol.canonical import domain_hash
+from witness.base import WitnessSource
+
+class SimPublicBeaconSource(WitnessSource):
+    source_id = "nist-like-beacon-sim"
+    witness_type = "beacon"
+    freshness_window = 2
+    def fetch(self, epoch: int, prev_anchor: str) -> dict:
+        return {"source_id": self.source_id, "witness_type": self.witness_type, "epoch": epoch, "sample_epoch": epoch, "value": domain_hash("FW:BEACON:NISTLIKE:SIM", {"epoch": epoch, "prev_anchor": prev_anchor})}
+
+class SimBackupBeaconSource(WitnessSource):
+    source_id = "backup-beacon-sim"
+    witness_type = "beacon"
+    freshness_window = 3
+    def fetch(self, epoch: int, prev_anchor: str) -> dict:
+        return {"source_id": self.source_id, "witness_type": self.witness_type, "epoch": epoch, "sample_epoch": epoch, "value": domain_hash("FW:BEACON:BACKUP:SIM", {"epoch": epoch, "prev_anchor": prev_anchor[:24]})}
+
+class SimAstronomySource(WitnessSource):
+    source_id = "astronomy-window-sim"
+    witness_type = "celestial"
+    freshness_window = 2
+    def fetch(self, epoch: int, prev_anchor: str) -> dict:
+        return {"source_id": self.source_id, "witness_type": self.witness_type, "epoch": epoch, "sample_epoch": epoch, "value": domain_hash("FW:CELESTIAL:ASTRO:SIM", {"epoch": epoch, "window": "polaris", "prev_anchor": prev_anchor[:24]})}
+
+class SimPulsarTimingSource(WitnessSource):
+    source_id = "pulsar-timing-sim"
+    witness_type = "celestial"
+    freshness_window = 4
+    def fetch(self, epoch: int, prev_anchor: str) -> dict:
+        return {"source_id": self.source_id, "witness_type": self.witness_type, "epoch": epoch, "sample_epoch": epoch - 1 if epoch > 1 else epoch, "value": domain_hash("FW:CELESTIAL:PULSAR:SIM", {"epoch": epoch, "prev_anchor": prev_anchor})}
+
+def normalize_sample(sample: dict) -> dict:
+    return {
+        "source_id": sample["source_id"],
+        "witness_type": sample["witness_type"],
+        "epoch": int(sample["epoch"]),
+        "sample_epoch": int(sample["sample_epoch"]),
+        "value": str(sample["value"]),
+    }
+
+def is_fresh(sample: dict, current_epoch: int, freshness_window: int) -> bool:
+    return (current_epoch - int(sample["sample_epoch"])) <= freshness_window
+
+def witness_quorum(samples: list, min_sources: int) -> bool:
+    return len({s["source_id"] for s in samples}) >= min_sources
+
+from witness.sources import SimPublicBeaconSource, SimBackupBeaconSource, SimAstronomySource, SimPulsarTimingSource
+
+class WitnessRegistry:
+    def __init__(self):
+        self.providers = {
+            "beacon": [SimPublicBeaconSource(), SimBackupBeaconSource()],
+            "celestial": [SimAstronomySource(), SimPulsarTimingSource()],
+        }
+
+    def get_sources(self, witness_type: str):
+        return list(self.providers[witness_type])
+
+from protocol.canonical import domain_hash
+from witness.normalize import normalize_sample
+from witness.freshness import is_fresh
+from witness.quorum import witness_quorum
+
+def collect_witness_group(sources: list, epoch: int, prev_anchor: str) -> dict:
+    normalized = []
+    diagnostics = []
+    for src in sources:
+        raw = src.fetch(epoch, prev_anchor)
+        sample = normalize_sample(raw)
+        fresh = is_fresh(sample, epoch, src.freshness_window)
+        diagnostics.append({"source_id": sample["source_id"], "witness_type": sample["witness_type"], "fresh": fresh, "sample_epoch": sample["sample_epoch"], "freshness_window": src.freshness_window})
+        if fresh:
+            normalized.append(sample)
+    normalized.sort(key=lambda s: s["source_id"])
+    digest = domain_hash("FW:WITNESS:GROUP", normalized)
+    return {"samples": normalized, "diagnostics": diagnostics, "digest": digest}
+
+def aggregate_bundle(beacon_group: dict, celestial_group: dict) -> dict:
+    return {
+        "beacon_digest": beacon_group["digest"],
+        "celestial_digest": celestial_group["digest"],
+        "beacon_quorum_ok": witness_quorum(beacon_group["samples"], 1),
+        "celestial_quorum_ok": witness_quorum(celestial_group["samples"], 1),
+        "diagnostics": {"beacon": beacon_group["diagnostics"], "celestial": celestial_group["diagnostics"]},
+    }
+
+
+from typing import Dict, Any, List
+from core.state_engine import compute_state, compute_state_root
+from core.anchor_chain import derive_seed, compute_forward_anchor
+from witness.registry import WitnessRegistry
+from witness.aggregate import collect_witness_group, aggregate_bundle
+from prime_engine.prime_search import find_prime
+from constellation.star_leaf import make_witness_hash, make_star_leaf
+from constellation.merkle_star_map import merkle_root_hex
+from attestations.attestation import make_attestation
+
+class FourWardNode:
+    def __init__(self, node_id: str, secret: str, genesis_anchor: str, difficulty_bits: int = 48, coord_modulus: int = 997):
+        self.node_id = node_id
+        self.secret = secret
+        self.prev_anchor = genesis_anchor
+        self.difficulty_bits = difficulty_bits
+        self.coord_modulus = coord_modulus
+        self.registry = WitnessRegistry()
+        self.leaves: List[str] = []
+        self.epochs: List[Dict[str, Any]] = []
+
+    def step(self, epoch: int, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        prev_anchor_before = self.prev_anchor
+        state = compute_state(self.prev_anchor, inputs, epoch, self.node_id)
+        state_root = compute_state_root(state)
+
+        beacon_group = collect_witness_group(self.registry.get_sources("beacon"), epoch, self.prev_anchor)
+        celestial_group = collect_witness_group(self.registry.get_sources("celestial"), epoch, self.prev_anchor)
+        bundle = aggregate_bundle(beacon_group, celestial_group)
+
+        beacon_value = bundle["beacon_digest"]
+        celestial_digest = bundle["celestial_digest"]
+        seed_hex = derive_seed(self.prev_anchor, beacon_value, celestial_digest)
+        prime_value, search_steps, prime_proof = find_prime(seed_hex, min_bits=self.difficulty_bits)
+
+        witness_hash = make_witness_hash(state_root, beacon_value, celestial_digest, prime_value)
+        star_leaf = make_star_leaf(epoch, prime_value, seed_hex, witness_hash)
+        self.leaves.append(star_leaf)
+        merkle_root = merkle_root_hex(self.leaves)
+        forward_anchor = compute_forward_anchor(self.prev_anchor, state_root, witness_hash, merkle_root)
+        attestation = make_attestation(epoch, self.node_id, self.secret, state_root, forward_anchor, prev_anchor_before)
+
+        x = prime_value % self.coord_modulus
+        y = (prime_value // self.coord_modulus) % self.coord_modulus
+        z = (prime_value // (self.coord_modulus ** 2)) % self.coord_modulus
+
+        epoch_obj = {
+            "epoch": epoch,
+            "node_id": self.node_id,
+            "prev_anchor": prev_anchor_before,
+            "state_root": state_root,
+            "beacon_value": beacon_value,
+            "celestial_digest": celestial_digest,
+            "seed_hex": seed_hex,
+            "prime_value": str(prime_value),
+            "prime_bits": prime_value.bit_length(),
+            "search_steps": search_steps,
+            "prime_proof": prime_proof,
+            "witness_hash": witness_hash,
+            "star_leaf": star_leaf,
+            "merkle_root": merkle_root,
+            "forward_anchor": forward_anchor,
+            "attestation": attestation,
+            "witness_bundle": bundle,
+            "x": x, "y": y, "z": z
+        }
+        self.prev_anchor = forward_anchor
+        self.epochs.append(epoch_obj)
+        return epoch_obj
+
+
+def verify_witness_bundle(bundle: dict) -> bool:
+    return bool(bundle.get("beacon_quorum_ok")) and bool(bundle.get("celestial_quorum_ok"))
+
+from crypto.signing import verify_message
+def verify_signed_payload(node_id: str, secret_lookup: dict, payload: dict, signature: str) -> bool:
+    if node_id not in secret_lookup:
+        return False
+    return verify_message(node_id, secret_lookup[node_id], payload, signature)
+
+from prime_engine.primality_proof import verify_prime
+from attestations.signing import verify_attestation
+from core.anchor_chain import compute_forward_anchor
+
+def verify_epoch(epoch: dict, secret_lookup: dict) -> bool:
+    if not verify_prime(int(epoch["prime_value"]), epoch["prime_proof"]):
+        return False
+    if compute_forward_anchor(epoch["prev_anchor"], epoch["state_root"], epoch["witness_hash"], epoch["merkle_root"]) != epoch["forward_anchor"]:
+        return False
+    att = epoch.get("attestation", {})
+    node_id = att.get("node_id")
+    if node_id not in secret_lookup:
+        return False
+    payload = {"epoch": att.get("epoch"), "node_id": att.get("node_id"), "state_root": att.get("state_root"), "forward_anchor": att.get("forward_anchor"), "prev_anchor": att.get("prev_anchor")}
+    return verify_attestation(node_id, secret_lookup[node_id], payload, att.get("attestation_signature", ""))
+
+
+def has_quorum(votes: list, threshold: int) -> bool:
+    return len({v["validator_id"] for v in votes}) >= threshold
+
+
+from protocol.canonical import domain_hash
+def sign_attestation(node_id: str, secret: str, payload: dict) -> str:
+    return domain_hash("FW:ATTEST:SIGN:V1", {"node_id": node_id, "secret": secret, "payload": payload})
+def verify_attestation(node_id: str, secret: str, payload: dict, signature: str) -> bool:
+    return sign_attestation(node_id, secret, payload) == signature
+
+from attestations.signing import sign_attestation
+def make_attestation(epoch: int, node_id: str, secret: str, state_root: str, forward_anchor: str, prev_anchor: str) -> dict:
+    payload = {"epoch": epoch, "node_id": node_id, "state_root": state_root, "forward_anchor": forward_anchor, "prev_anchor": prev_anchor}
+    payload["attestation_signature"] = sign_attestation(node_id, secret, payload)
+    return payload
+
+
+import json
+from pathlib import Path
+class JsonStore:
+    def __init__(self, root: str):
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+    def save(self, relpath: str, data):
+        path = self.root / relpath
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
